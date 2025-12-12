@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#enviroments local
+.env              # Archivo .env principal
+.env.local        # Variables locales
+.env.development  # Entorno desarrollo
+.env.production   # Entorno producción
+.env.test         #  Entorno testing

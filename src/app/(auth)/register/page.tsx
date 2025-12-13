@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { registerUser } from "@/src/actions/auth";
@@ -15,13 +15,13 @@ export default function RegisterPage() {
   // Verificar si viene del registro exitoso
   const registered = searchParams.get("registered");
 
-  async function handleSubmit(event) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSuccess("");
     setLoading(true);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(event.currentTarget as HTMLFormElement);
     
     try {
       const result = await registerUser(formData);

@@ -10,37 +10,88 @@ import {
   EyeOff,
   ChevronLeft,
   Sparkles,
-  Notebook
+  Notebook,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 
 const LoginPage = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isVisible, setIsVisible] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    remember: false
+    rememberMe: false
   });
   const [loading, setLoading] = useState(false);
   const [hoverSubmit, setHoverSubmit] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Mensajes de URL parameters
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const registered = searchParams.get('registered');
+  const verified = searchParams.get('verified');
+  const reset = searchParams.get('reset');
 
   useEffect(() => {
     setIsVisible(true);
-  }, []);
+    
+    // Mostrar mensajes según los parámetros de URL
+    if (registered) {
+      setSuccess('¡Cuenta creada exitosamente! Ahora puedes iniciar sesión.');
+    }
+    if (verified) {
+      setSuccess('¡Email verificado correctamente! Ya puedes iniciar sesión.');
+    }
+    if (reset) {
+      setSuccess('Contraseña restablecida correctamente. Inicia sesión con tu nueva contraseña.');
+    }
+  }, [registered, verified, reset]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Lógica de login aquí
-    console.log('Login attempt:', formData);
-    
-    router.push('/dashboard');
+    setError('');
+    setSuccess('');
+
+    try {
+      // Usar NextAuth para iniciar sesión
+      const result = await signIn('credentials', {
+        email: formData.email,
+        password: formData.password,
+        rememberMe: formData.rememberMe,
+        redirect: false,
+        callbackUrl: callbackUrl
+      });
+
+      if (result?.error) {
+        // Manejar diferentes tipos de errores
+        if (result.error.includes('contraseña') || result.error.includes('password')) {
+          setError('Contraseña incorrecta. Por favor, verifica tus credenciales.');
+        } else if (result.error.includes('usuario') || result.error.includes('user')) {
+          setError('Usuario no encontrado. Verifica tu email o crea una cuenta.');
+        } else if (result.error.includes('Email') || result.error.includes('email')) {
+          setError('Email y contraseña son requeridos.');
+        } else {
+          setError('Error al iniciar sesión. Por favor, intenta de nuevo.');
+        }
+      } else if (result?.ok) {
+        // Redirigir al dashboard o a la URL de callback
+        router.push(callbackUrl);
+        router.refresh();
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Error de conexión. Por favor, verifica tu conexión a internet.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,6 +100,32 @@ const LoginPage = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+    // Limpiar errores cuando el usuario empieza a escribir
+    if (error) setError('');
+  };
+
+  // Manejar login con Google
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      await signIn('google', { callbackUrl });
+    } catch (err) {
+      setError('Error al iniciar sesión con Google');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Manejar login con GitHub
+  const handleGithubLogin = async () => {
+    setLoading(true);
+    try {
+      await signIn('github', { callbackUrl });
+    } catch (err) {
+      setError('Error al iniciar sesión con GitHub');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Back to Home - Diseño elegante
@@ -92,6 +169,21 @@ const LoginPage = () => {
         </div>
 
         <div className="p-8">
+          {/* Mensajes de éxito/error */}
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-start gap-3 animate-fadeIn">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-green-700 dark:text-green-300">{success}</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3 animate-fadeIn">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          )}
+
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               Welcome Back
@@ -115,7 +207,8 @@ const LoginPage = () => {
                   value={formData.email}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  disabled={loading}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="your@email.com"
                 />
               </div>
@@ -129,7 +222,7 @@ const LoginPage = () => {
                 </label>
                 <Link 
                   href="/forgot-password" 
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Forgot?
                 </Link>
@@ -142,13 +235,15 @@ const LoginPage = () => {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  disabled={loading}
+                  className="w-full pl-10 pr-10 py-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  disabled={loading}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -159,13 +254,14 @@ const LoginPage = () => {
             <div className="flex items-center">
               <input
                 type="checkbox"
-                name="remember"
-                checked={formData.remember}
+                name="rememberMe"
+                checked={formData.rememberMe}
                 onChange={handleChange}
-                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                disabled={loading}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <label className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Remember me
+                Remember me on this device
               </label>
             </div>
 
@@ -175,7 +271,7 @@ const LoginPage = () => {
               disabled={loading}
               onMouseEnter={() => setHoverSubmit(true)}
               onMouseLeave={() => setHoverSubmit(false)}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg transition-all duration-300 shadow hover:shadow-md"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg transition-all duration-300 shadow hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="flex items-center justify-center gap-2">
@@ -208,7 +304,9 @@ const LoginPage = () => {
             <Button
               type="button"
               color="light"
-              className="py-2.5 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              className="py-2.5 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -218,7 +316,9 @@ const LoginPage = () => {
             <Button
               type="button"
               color="light"
-              className="py-2.5 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+              onClick={handleGithubLogin}
+              disabled={loading}
+              className="py-2.5 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
@@ -233,7 +333,7 @@ const LoginPage = () => {
               Don't have an account?{' '}
               <Link 
                 href="/register" 
-                className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create one
               </Link>
@@ -308,6 +408,37 @@ const LoginPage = () => {
           </p>
         </div>
       </div>
+
+      {/* Estilos CSS para animaciones */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes blob {
+          0% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+          100% { transform: translate(0px, 0px) scale(1); }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+        
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </div>
   );
 };

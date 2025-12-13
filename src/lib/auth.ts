@@ -1,140 +1,148 @@
-import sql from './db';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers';
+import { NextAuthOptions, Session, User } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { compare } from "bcrypt";
+import { db } from "./db";
+import { JWT } from "next-auth/jwt";
 
-const JWT_SECRET = process.env.NEXTAUTH_SECRET || 'your-secret-key';
-
-export interface User {
-  id: number;
-  name: string | null;
-  email: string;
-  email_verified_at: Date | null;
-  created_at: Date;
+// Extender tipos
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+      rememberMe?: boolean;
+    } & Session["user"];
+  }
 }
 
-export async function registerUser(email: string, password: string, name?: string) {
-  // Check if user exists
-  const existingUser = await sql`SELECT id FROM users WHERE email = ${email}`;
-  if (existingUser.length > 0) {
-    throw new Error('User already exists');
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    rememberMe?: boolean;
   }
-
-  // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  // Create user
-  const result = await sql`
-    INSERT INTO users (email, password, name, created_at, updated_at)
-    VALUES (${email}, ${hashedPassword}, ${name || null}, NOW(), NOW())
-    RETURNING id, email, name, created_at
-  `;
-
-  return result[0] as User;
 }
 
-export async function loginUser(email: string, password: string) {
-  // Get user with password
-  const users = await sql`
-    SELECT id, email, password, name, email_verified_at, created_at
-    FROM users 
-    WHERE email = ${email}
-  `;
+export const authOptions: NextAuthOptions = {
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 días por defecto
+  },
+  providers: [
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+        rememberMe: { label: "Recordarme", type: "checkbox" }
+      },
+      async authorize(credentials): Promise<User | null> {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Email y contraseña son requeridos");
+        }
 
-  if (users.length === 0) {
-    throw new Error('Invalid credentials');
-  }
+        try {
+          // Buscar usuario
+          const result = await db.query(
+            "SELECT id, email, name, password FROM users WHERE email = $1",
+            [credentials.email]
+          );
 
-  const user = users[0];
+          if (result.rows.length === 0) {
+            throw new Error("Usuario no encontrado");
+          }
 
-  // Verify password
-  const isValid = await bcrypt.compare(password, user.password);
-  if (!isValid) {
-    throw new Error('Invalid credentials');
-  }
+          const user = result.rows[0];
 
-  // Create session token
-  const sessionToken = jwt.sign(
-    { userId: user.id, email: user.email },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
+          // Verificar contraseña
+          const isValid = await compare(credentials.password, user.password);
 
-  // Store session in database (expires in 7 days)
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+          if (!isValid) {
+            throw new Error("Contraseña incorrecta");
+          }
 
-  await sql`
-    INSERT INTO sessions (user_id, session_token, expires_at)
-    VALUES (${user.id}, ${sessionToken}, ${expiresAt.toISOString()})
-  `;
+          // Si seleccionó "Recordarme", crear token y guardar en BD
+          if (credentials.rememberMe === "true" || credentials.rememberMe === true) {
+            const crypto = require('crypto');
+            const rememberToken = crypto.randomBytes(32).toString('hex');
+            
+            // Guardar token en la base de datos
+            await db.query(
+              "UPDATE users SET remember_token = $1, updated_at = NOW() WHERE id = $2",
+              [rememberToken, user.id]
+            );
+          }
 
-  // Set cookie
-  (await cookies()).set({
-    name: 'session_token',
-    value: sessionToken,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    expires: expiresAt,
-    path: '/',
-  });
+          // Actualizar última conexión
+          await db.query(
+            "UPDATE users SET updated_at = NOW() WHERE id = $1",
+            [user.id]
+          );
 
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    email_verified_at: user.email_verified_at,
-  } as User;
-}
+          return {
+            id: user.id.toString(),
+            email: user.email,
+            name: user.name,
+            rememberMe: credentials.rememberMe === "true" || credentials.rememberMe === true
+          };
+        } catch (error) {
+          console.error("Error en autorización:", error);
+          throw error;
+        }
+      }
+    })
+  ],
+  callbacks: {
+    async jwt({ token, user, trigger, session }) {
+      // Inicializar token con datos del usuario
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.rememberMe = (user as any).rememberMe || false;
+      }
 
-export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get('session_token')?.value;
+      // Si el usuario seleccionó "Recordarme", extender la duración
+      if (token.rememberMe) {
+        token.maxAge = 365 * 24 * 60 * 60; // 1 año
+      } else {
+        token.maxAge = 24 * 60 * 60; // 1 día
+      }
 
-  if (!sessionToken) {
-    return null;
-  }
-
-  try {
-    // Verify token
-    const decoded = jwt.verify(sessionToken, JWT_SECRET) as { userId: number };
-
-    // Check session in database
-    const sessions = await sql`
-      SELECT s.*, u.id as user_id, u.email, u.name, u.email_verified_at
-      FROM sessions s
-      JOIN users u ON s.user_id = u.id
-      WHERE s.session_token = ${sessionToken}
-      AND s.expires_at > NOW()
-    `;
-
-    if (sessions.length === 0) {
-      return null;
+      return token;
+    },
+    async session({ session, token }): Promise<Session> {
+      if (token && session.user) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.name = token.name as string;
+        (session.user as any).rememberMe = token.rememberMe;
+      }
+      return session;
+    },
+    async signIn({ user, account, profile, email, credentials }) {
+      // Verificar si hay un remember_token válido
+      if (credentials?.rememberMe) {
+        try {
+          const crypto = require('crypto');
+          const rememberToken = crypto.randomBytes(32).toString('hex');
+          
+          await db.query(
+            "UPDATE users SET remember_token = $1 WHERE id = $2",
+            [rememberToken, parseInt(user.id)]
+          );
+        } catch (error) {
+          console.error("Error actualizando remember token:", error);
+        }
+      }
+      return true;
     }
-
-    const session = sessions[0];
-    return {
-      id: session.user_id,
-      email: session.email,
-      name: session.name,
-      email_verified_at: session.email_verified_at,
-    } as User;
-  } catch (error) {
-    console.error('Session error:', error);
-    return null;
-  }
-}
-
-export async function logoutUser() {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get('session_token')?.value;
-
-  if (sessionToken) {
-    // Delete session from database
-    await sql`DELETE FROM sessions WHERE session_token = ${sessionToken}`;
-  }
-
-  // Clear cookie
-  cookieStore.delete('session_token');
-}
+  },
+  pages: {
+    signIn: "/login",
+    signOut: "/",
+    error: "/login",
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === "development",
+};

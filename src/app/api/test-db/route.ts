@@ -22,11 +22,19 @@ export async function GET() {
       hasSessionsTable: tables.rows.some(row => row.table_name === 'sessions')
     });
   } catch (error) {
+    // Verificar que error es una instancia de Error
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    
     return NextResponse.json(
       { 
         status: "error", 
-        message: error.message,
-        connectionString: process.env.DATABASE_URL ? "✅ Existe" : "❌ No existe"
+        message: errorMessage,
+        connectionString: process.env.DATABASE_URL ? "✅ Existe" : "❌ No existe",
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        } : null
       },
       { status: 500 }
     );

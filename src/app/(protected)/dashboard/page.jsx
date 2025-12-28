@@ -16,21 +16,21 @@ import {
 } from 'lucide-react';
 
 // Importar tus datos mock
-import { KNOWLEDGE_CATEGORIES } from '@/src/data/mockKnowledge';
-import { RECENT_NOTES } from '@/src/data/mosckRecentNotes';
-import { STUDY_REMINDERS } from '@/src/data/mockStudyReminders';
-import { STATS } from '@/src/data/mockStats';
-import { POPULAR_TAGS } from '@/src/data/mockPopularTags';
+import { KNOWLEDGE_CATEGORIES } from '@/data/mockKnowledge';
+import { RECENT_NOTES } from '@/data/mosckRecentNotes';
+import { STUDY_REMINDERS } from '@/data/mockStudyReminders';
+import { STATS } from '@/data/mockStats';
+import { POPULAR_TAGS } from '@/data/mockPopularTags';
 
 // Importar tus componentes
-import StatCard from '@/src/components/common/StatCard';
-import CategoryCard from '@/src/components/common/CategoryCard';
-import ReminderItem from '@/src/components/common/ReminderItem';
-import TagsCard from '@/src/components/common/TagsCard';
-import ButtonTags from '@/src/components/common/ButtonTags';
-import ButtonAdd from '@/src/components/common/ButtonAdd';
-import ShortCut from '@/src/components/common/ShortCut';
-import RecentKnowledge from '@/src/components/welcome/RecentKnowledge';
+import StatCard from '@/components/common/StatCard';
+import CategoryCard from '@/components/common/CategoryCard';
+import ReminderItem from '@/components/common/ReminderItem';
+import TagsCard from '@/components/common/TagsCard';
+import ButtonTags from '@/components/common/ButtonTags';
+import ButtonAdd from '@/components/common/ButtonAdd';
+import ShortCut from '@/components/common/ShortCut';
+import RecentKnowledge from '@/components/welcome/RecentKnowledge';
 
 const buttonTagsText = [
   { text: "Nueva nota",children: <Plus size={20} />},

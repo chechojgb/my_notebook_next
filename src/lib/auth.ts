@@ -1,9 +1,12 @@
+// lib/auth.js - AÑADE LA EXPORTACIÓN DE authOptions
 import NextAuth from "next-auth";
+import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { query } from "./db";
 import bcrypt from "bcryptjs";
 
-const authOptions = {
+// ⭐️⭐️⭐️ authOptions está definido pero NO exportado ⭐️⭐️⭐️
+const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -78,5 +81,11 @@ const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// ✅ Esta es la forma correcta
-export default NextAuth(authOptions);
+// Crear handler
+const handler = NextAuth(authOptions);
+
+
+export default handler;           // Handler por defecto (para API route)
+export { handler as GET };        // Para export individual
+export { handler as POST };       // Para export individual
+export { authOptions };           // ¡IMPORTANTE! Exportar authOptions

@@ -1,148 +1,91 @@
-import { NextAuthOptions, Session, User } from "next-auth";
+// lib/auth.js - AÑADE LA EXPORTACIÓN DE authOptions
+import NextAuth from "next-auth";
+import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { compare } from "bcrypt";
-import { db } from "./db";
-import { JWT } from "next-auth/jwt";
+import { query } from "./db";
+import bcrypt from "bcryptjs";
 
-// Extender tipos
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string;
-      email: string;
-      name: string | null;
-      rememberMe?: boolean;
-    } & Session["user"];
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    id: string;
-    rememberMe?: boolean;
-  }
-}
-
-export const authOptions: NextAuthOptions = {
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 días por defecto
-  },
+// ⭐️⭐️⭐️ authOptions está definido pero NO exportado ⭐️⭐️⭐️
+const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      name: "credentials",
+      name: "Credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-        rememberMe: { label: "Recordarme", type: "checkbox" }
+        password: { label: "Password", type: "password" }
       },
-      async authorize(credentials): Promise<User | null> {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email y contraseña son requeridos");
-        }
-
+      async authorize(credentials) {
         try {
-          // Buscar usuario
-          const result = await db.query(
-            "SELECT id, email, name, password FROM users WHERE email = $1",
+          if (!credentials?.email || !credentials?.password) {
+            throw new Error("Email y contraseña son requeridos");
+          }
+
+          const result = await query(
+            "SELECT * FROM users WHERE email = $1",
             [credentials.email]
           );
-
+          
           if (result.rows.length === 0) {
             throw new Error("Usuario no encontrado");
           }
-
+          
           const user = result.rows[0];
-
-          // Verificar contraseña
-          const isValid = await compare(credentials.password, user.password);
-
+          
+          const isValid = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+          
           if (!isValid) {
             throw new Error("Contraseña incorrecta");
           }
-
-          // Si seleccionó "Recordarme", crear token y guardar en BD
-          if (credentials.rememberMe === "true" || credentials.rememberMe === true) {
-            const crypto = require('crypto');
-            const rememberToken = crypto.randomBytes(32).toString('hex');
-            
-            // Guardar token en la base de datos
-            await db.query(
-              "UPDATE users SET remember_token = $1, updated_at = NOW() WHERE id = $2",
-              [rememberToken, user.id]
-            );
-          }
-
-          // Actualizar última conexión
-          await db.query(
-            "UPDATE users SET updated_at = NOW() WHERE id = $1",
-            [user.id]
-          );
-
+          
           return {
             id: user.id.toString(),
             email: user.email,
-            name: user.name,
-            rememberMe: credentials.rememberMe === "true" || credentials.rememberMe === true
+            name: user.name
           };
         } catch (error) {
-          console.error("Error en autorización:", error);
-          throw error;
+          console.error("Error en authorize:", error.message);
+          return null;
         }
       }
     })
   ],
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
+  },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
-      // Inicializar token con datos del usuario
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
-        token.rememberMe = (user as any).rememberMe || false;
       }
-
-      // Si el usuario seleccionó "Recordarme", extender la duración
-      if (token.rememberMe) {
-        token.maxAge = 365 * 24 * 60 * 60; // 1 año
-      } else {
-        token.maxAge = 24 * 60 * 60; // 1 día
-      }
-
       return token;
     },
-    async session({ session, token }): Promise<Session> {
-      if (token && session.user) {
-        session.user.id = token.id as string;
-        session.user.email = token.email as string;
-        session.user.name = token.name as string;
-        (session.user as any).rememberMe = token.rememberMe;
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.id;
+        session.user.email = token.email;
+        session.user.name = token.name;
       }
       return session;
-    },
-    async signIn({ user, account, profile, email, credentials }) {
-      // Verificar si hay un remember_token válido
-      if (credentials?.rememberMe) {
-        try {
-          const crypto = require('crypto');
-          const rememberToken = crypto.randomBytes(32).toString('hex');
-          
-          await db.query(
-            "UPDATE users SET remember_token = $1 WHERE id = $2",
-            [rememberToken, parseInt(user.id)]
-          );
-        } catch (error) {
-          console.error("Error actualizando remember token:", error);
-        }
-      }
-      return true;
     }
   },
   pages: {
     signIn: "/login",
-    signOut: "/",
-    error: "/login",
+    signUp: "/register",
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === "development",
 };
+
+// Crear handler
+const handler = NextAuth(authOptions);
+
+
+export default handler;           // Handler por defecto (para API route)
+export { handler as GET };        // Para export individual
+export { handler as POST };       // Para export individual
+export { authOptions };           // ¡IMPORTANTE! Exportar authOptions

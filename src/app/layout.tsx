@@ -1,24 +1,21 @@
-import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import AuthProvider from '@/components/protected/AuthProvider';
 import './globals.css';
 
-// Usa Inter en lugar de Geist
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
-  title: 'My App with Auth',
-  description: 'Authentication with Next.js and Neon PostgreSQL',
+export const metadata = {
+  title: 'MyNotebook',
+  description: 'Tu aplicación para tomar notas',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className={inter.className}>
-        <main>{children}</main>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
